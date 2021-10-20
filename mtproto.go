@@ -585,3 +585,38 @@ func (m *MTProto) DebugPrintf(format string, a ...interface{}) (n int, err error
 
 	return 0, nil
 }
+
+// Author: Kliton
+// Reconnect to specified DC
+func (m *MTProto) ConnectAgainToDC(dc int) error {
+	newIP, found := m.dclist[dc]
+	if !found {
+		return errors.New(fmt.Sprint("dc", dc, "ip not found"))
+
+	}
+
+	log.Println("Disconnecting conn id", m.ConnId)
+	err := m.Disconnect(m.ConnId)
+	if err != nil {
+		return errors.Wrap(err, "disconnecting")
+	}
+	//time.Sleep(time.Second)
+	m.routineswg.Wait()
+	m.addr = newIP
+	m.encrypted = false
+	//m.sessionId = utils.GenerateSessionID()
+	//m.serviceChannel = make(chan tl.Object)
+	m.serviceModeActivated = false
+	//m.responseChannels = utils.NewSyncIntObjectChan()
+	//m.expectedTypes = utils.NewSyncIntReflectTypes()
+	//m.seqNo = 0
+
+	log.Println("Connecting to IP", newIP)
+
+	err = m.CreateConnection()
+	if err != nil {
+		return errors.Wrap(err, "recreating connection")
+	}
+
+	return errors.New(fmt.Sprint("migration to dc", dc, "failed"))
+}

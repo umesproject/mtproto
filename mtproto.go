@@ -579,7 +579,7 @@ func (m *MTProto) tryToProcessErr(e *ErrResponseCode) error {
 }
 
 func (m *MTProto) DebugPrintf(format string, a ...interface{}) (n int, err error) {
-	if true == false {
+	if true == true {
 		return fmt.Printf(format, a...)
 	}
 

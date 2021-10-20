@@ -1893,7 +1893,7 @@ func (*AuthExportLoginTokenParams) CRC() uint32 {
 }
 
 // Registers a validated phone number in the system.
-func (c *Client) AuthExportLoginToken(apiID int32, apiHash string, exceptIds []int32) (AuthLoginToken, error) {
+func (c *Client) AuthExportLoginToken(apiID int32, apiHash string, exceptIds []int32) (interface{}, error) {
 	responseData, err := c.MakeRequest(&AuthExportLoginTokenParams{
 		APIHash:   apiHash,
 		APIID:     apiID,
@@ -1903,11 +1903,7 @@ func (c *Client) AuthExportLoginToken(apiID int32, apiHash string, exceptIds []i
 		return nil, errors.Wrap(err, "sending AuthExportLoginToken")
 	}
 
-	resp, ok := responseData.(AuthLoginToken)
-	if !ok {
-		panic("got invalid response type: " + reflect.TypeOf(responseData).String())
-	}
-	return resp, nil
+	return responseData, nil
 }
 
 // Registers a validated phone number in the system.
@@ -1978,17 +1974,13 @@ func (*AuthImportLoginTokenParams) CRC() uint32 {
 }
 
 // Registers a validated phone number in the system.
-func (c *Client) AuthImportLoginToken(token []byte) (AuthLoginToken, error) {
+func (c *Client) AuthImportLoginToken(token []byte) (interface{}, error) {
 	responseData, err := c.MakeRequest(&AuthImportLoginTokenParams{Token: token})
 	if err != nil {
 		return nil, errors.Wrap(err, "sending AuthImportLoginToken")
 	}
 
-	resp, ok := responseData.(AuthLoginToken)
-	if !ok {
-		panic("got invalid response type: " + reflect.TypeOf(responseData).String())
-	}
-	return resp, nil
+	return responseData, nil
 }
 
 // Registers a validated phone number in the system.

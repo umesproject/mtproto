@@ -413,7 +413,7 @@ func (m *MTProto) readMsg(connId int64) error {
 			return errors.Wrap(err, "reading message")
 		}
 	}
-	fmt.Printf("%d receivemsgID:%d\n", connId, response.GetMsgID())
+	//fmt.Printf("%d receivemsgID:%d content:%s\n", connId, response.GetMsgID(), string(response.GetMsg()))
 
 	if m.serviceModeActivated {
 		var obj tl.Object
@@ -481,6 +481,9 @@ messageTypeSwitching:
 			m.warnError(errors.Wrap(err, "saving session"))
 		}
 
+	case *objects.LoggedWithQrCode:
+		m.DebugPrintf("Decode the message:%d type:LoggedWithQrCode loggedAt:%d\n", message.LoggedAt)
+
 	case *objects.Pong:
 		// игнорим, пришло и пришло, че бубнить то
 		m.writeRPCResponse(int(message.MsgID), message)
@@ -513,6 +516,7 @@ messageTypeSwitching:
 		goto messageTypeSwitching
 
 	default:
+		log.Println("GOT DATA", message)
 		processed := false
 		for _, f := range m.serverRequestHandlers {
 			processed = f(message)

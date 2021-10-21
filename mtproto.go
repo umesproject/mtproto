@@ -622,5 +622,5 @@ func (m *MTProto) ConnectAgainToDC(dc int) error {
 		return errors.Wrap(err, "recreating connection")
 	}
 
-	return errors.New(fmt.Sprint("migration to dc", dc, "failed"))
+	return nil
 }

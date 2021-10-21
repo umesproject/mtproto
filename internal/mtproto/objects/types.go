@@ -487,3 +487,11 @@ type MsgsNewDetailedInfo struct {
 func (*MsgsNewDetailedInfo) CRC() uint32 {
 	return 0x809db6df //nolint:gomnd not magic
 }
+
+type LoggedWithQrCode struct {
+	LoggedAt int64
+}
+
+func (*LoggedWithQrCode) CRC() uint32 {
+	return 0x1549a18 //nolint:gomnd not magic
+}

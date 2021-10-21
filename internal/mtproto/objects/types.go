@@ -493,5 +493,5 @@ type LoggedWithQrCode struct {
 }
 
 func (*LoggedWithQrCode) CRC() uint32 {
-	return 0x1549a18 //nolint:gomnd not magic
+	return 0x155bcf8 //nolint:gomnd not magic
 }

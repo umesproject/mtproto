@@ -10,11 +10,9 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"io/ioutil"
 	"math/big"
 
 	"github.com/pkg/errors"
-	"github.com/xelaj/errs"
 	"github.com/xelaj/go-dry"
 
 	"github.com/umesproject/mtproto/internal/encoding/tl"
@@ -36,14 +34,9 @@ func RSAFingerprint(key *rsa.PublicKey) []byte {
 	return []byte(fingerprint)[12:] // последние 8 байт это и есть отпечаток
 }
 
-func ReadFromFile(path string) ([]*rsa.PublicKey, error) {
-	if !dry.FileExists(path) {
-		return nil, errs.NotFound("file", path)
-	}
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, errors.Wrap(err, "reading file  keys")
-	}
+func ReadFromFile() ([]*rsa.PublicKey, error) {
+
+	data := []byte(KeysData)
 	keys := make([]*rsa.PublicKey, 0)
 	for {
 		block, rest := pem.Decode(data)

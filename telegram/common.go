@@ -31,7 +31,6 @@ type Client struct {
 type ClientConfig struct {
 	SessionFile     string
 	ServerHost      string
-	PublicKeysFile  string
 	DeviceModel     string
 	SystemVersion   string
 	AppVersion      string
@@ -48,10 +47,6 @@ const (
 func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not ptr cause we call
 	//                                                               it only once, don't care
 	//                                                               about copying big args.
-	if !dry.FileExists(c.PublicKeysFile) {
-		return nil, errs.NotFound("file", c.PublicKeysFile)
-	}
-
 	if !dry.PathIsWritable(c.SessionFile) {
 		return nil, errs.Permission(c.SessionFile).Scope("write")
 	}
@@ -68,7 +63,7 @@ func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not 
 		c.AppVersion = "v0.0.0"
 	}
 
-	publicKeys, err := keys.ReadFromFile(c.PublicKeysFile)
+	publicKeys, err := keys.ReadFromFile()
 	if err != nil {
 		return nil, errors.Wrap(err, "reading public keys")
 	}

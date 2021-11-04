@@ -8,6 +8,7 @@ package mtproto
 import (
 	"context"
 	"crypto/rsa"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -130,6 +131,23 @@ func (m *MTProto) SetDCList(in map[int]string) {
 	for k, v := range in {
 		m.dclist[k] = v
 	}
+}
+
+func (m *MTProto) GetSessionJSON() string {
+	// m.authKey = s.Key
+	// 	m.authKeyHash = s.Hash
+	// 	m.serverSalt = s.Salt
+	// 	m.addr = s.Hostname
+
+	s := session.Session{
+		Key:      m.authKey,
+		Hash:     m.authKeyHash,
+		Salt:     m.serverSalt,
+		Hostname: m.addr,
+	}
+
+	res, _ := json.Marshal(s)
+	return string(res)
 }
 
 func (m *MTProto) CreateConnection() error {

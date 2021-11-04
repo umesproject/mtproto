@@ -31,7 +31,7 @@ type Client struct {
 }
 
 type ClientConfig struct {
-	SessionFile     string
+	Session         session.Session
 	ServerHost      string
 	DeviceModel     string
 	SystemVersion   string

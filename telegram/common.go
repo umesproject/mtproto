@@ -6,6 +6,7 @@
 package telegram
 
 import (
+	"encoding/json"
 	"reflect"
 	"runtime"
 
@@ -19,6 +20,7 @@ import (
 
 	"github.com/umesproject/mtproto"
 	"github.com/umesproject/mtproto/internal/keys"
+	"github.com/umesproject/mtproto/internal/session"
 )
 
 type Client struct {
@@ -140,6 +142,18 @@ func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not 
 	client.SetDCList(dcList)
 	return client, nil
 }
+
+func (m *Client) SessionFromJSON(src string) (*session.Session, error) {
+	sessionParsed := &session.Session{}
+
+	err := json.Unmarshal([]byte(src), &sessionParsed)
+	if err != nil {
+		return nil, err
+	}
+
+	return sessionParsed, nil
+}
+
 func (m *Client) RefreshServerConfig() error {
 	//如果服务器地址重定向,则更新配置
 	resp, err := m.InvokeWithLayer(ApiVersion, m.initConnectionParams)

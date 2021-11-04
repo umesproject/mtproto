@@ -34,7 +34,7 @@ func RSAFingerprint(key *rsa.PublicKey) []byte {
 	return []byte(fingerprint)[12:] // последние 8 байт это и есть отпечаток
 }
 
-func ReadFromFile() ([]*rsa.PublicKey, error) {
+func Read() ([]*rsa.PublicKey, error) {
 
 	data := []byte(KeysData)
 	keys := make([]*rsa.PublicKey, 0)

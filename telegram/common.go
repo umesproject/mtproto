@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"runtime"
 
+	"github.com/k0kubun/pp"
 	"github.com/pkg/errors"
 	"github.com/xelaj/errs"
 	dry "github.com/xelaj/go-dry"
@@ -63,7 +64,7 @@ func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not 
 		c.AppVersion = "v0.0.0"
 	}
 
-	publicKeys, err := keys.ReadFromFile()
+	publicKeys, err := keys.Read()
 	if err != nil {
 		return nil, errors.Wrap(err, "reading public keys")
 	}
@@ -97,7 +98,7 @@ func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not 
 		config:  &c,
 	}
 
-	//client.AddCustomServerRequestHandler(client.handleSpecialRequests())
+	client.AddCustomServerRequestHandler(client.handleSpecialRequests())
 	client.initConnectionParams = &InitConnectionParams{
 		ApiID:          int32(c.AppID),
 		DeviceModel:    c.DeviceModel,
@@ -175,7 +176,6 @@ func (m *Client) IsSessionRegistred() (bool, error) {
 	}
 }
 
-/*
 func (c *Client) handleSpecialRequests() func(any) bool {
 	return func(i any) bool {
 		switch msg := i.(type) {
@@ -190,5 +190,5 @@ func (c *Client) handleSpecialRequests() func(any) bool {
 		return false
 	}
 }
-*/
+
 //----------------------------------------------------------------------------

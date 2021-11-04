@@ -12,8 +12,6 @@ import (
 
 	"github.com/k0kubun/pp"
 	"github.com/pkg/errors"
-	"github.com/xelaj/errs"
-	dry "github.com/xelaj/go-dry"
 
 	"strconv"
 	"strings"
@@ -49,9 +47,6 @@ const (
 func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not ptr cause we call
 	//                                                               it only once, don't care
 	//                                                               about copying big args.
-	if !dry.PathIsWritable(c.SessionFile) {
-		return nil, errs.Permission(c.SessionFile).Scope("write")
-	}
 
 	if c.DeviceModel == "" {
 		c.DeviceModel = "Unknown"

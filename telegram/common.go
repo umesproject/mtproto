@@ -143,7 +143,7 @@ func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not 
 	return client, nil
 }
 
-func (m *Client) SessionFromJSON(src string) (*session.Session, error) {
+func SessionFromJSON(src string) (*session.Session, error) {
 	sessionParsed := &session.Session{}
 
 	err := json.Unmarshal([]byte(src), &sessionParsed)

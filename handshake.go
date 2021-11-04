@@ -160,6 +160,5 @@ func (m *MTProto) makeAuthKey() error { // nolint don't know how to make method 
 	// (all ok)
 	m.serviceModeActivated = false
 	m.encrypted = true
-	err = m.SaveSession()
 	return errors.Wrap(err, "saving session")
 }

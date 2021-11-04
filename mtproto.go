@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/xelaj/errs"
 
 	"github.com/umesproject/mtproto/internal/encoding/tl"
 	"github.com/umesproject/mtproto/internal/mode"
@@ -66,8 +65,7 @@ type MTProto struct {
 	// связки приложение+клиент
 	dclist map[int]string
 
-	// storage of session for this instance
-	tokensStorage session.SessionLoader
+	session *session.Session
 
 	// один из публичных ключей telegram. нужен только для создания сессии.
 	publicKey *rsa.PublicKey
@@ -89,10 +87,7 @@ type MTProto struct {
 type customHandlerFunc = func(i any) bool
 
 type Config struct {
-	AuthKeyFile string //! DEPRECATED // use SessionStorage
-
-	// if SessionStorage is nil, AuthKeyFile is required, otherwise it will be ignored
-	SessionStorage session.SessionLoader
+	Session *session.Session
 
 	ServerHost string
 	PublicKey  *rsa.PublicKey
@@ -100,25 +95,9 @@ type Config struct {
 }
 
 func NewMTProto(c Config) (*MTProto, error) {
-	if c.SessionStorage == nil {
-		if c.AuthKeyFile == "" {
-			return nil, errors.New("AuthKeyFile is empty") //nolint:golint // its a field name, makes no sense
-		}
-
-		c.SessionStorage = session.NewFromFile(c.AuthKeyFile)
-	}
-
-	s, err := c.SessionStorage.Load()
-	switch {
-	case err == nil, errs.IsNotFound(err):
-	default:
-		return nil, errors.Wrap(err, "loading session")
-	}
-
 	m := &MTProto{
-		tokensStorage:         c.SessionStorage,
 		addr:                  c.ServerHost,
-		encrypted:             s != nil, // if not nil, then it's already encrypted, otherwise makes no sense
+		encrypted:             c.Session != nil,
 		sessionId:             utils.GenerateSessionID(),
 		serviceChannel:        make(chan tl.Object),
 		publicKey:             c.PublicKey,
@@ -127,10 +106,11 @@ func NewMTProto(c Config) (*MTProto, error) {
 		serverRequestHandlers: make([]customHandlerFunc, 0),
 		dclist:                defaultDCList(),
 		ProxyUrl:              c.ProxyUrl,
+		session:               c.Session,
 	}
 
-	if s != nil {
-		m.LoadSession(s)
+	if c.Session != nil {
+		m.LoadSession(c.Session)
 	}
 
 	return m, nil
@@ -461,8 +441,6 @@ messageTypeSwitching:
 	case *objects.BadServerSalt:
 		m.DebugPrintf("Decode the message:%d type:BadServerSalt Msgid:%d\n", message.BadMsgID, msg.GetMsgID())
 		m.serverSalt = message.NewSalt
-		err := m.SaveSession()
-		check(err)
 		//fmt.Println("BadServerSalt m.mutex.Lock()")
 		//m.mutex.Lock()
 		//for _, k := range m.responseChannels.Keys() {
@@ -475,11 +453,7 @@ messageTypeSwitching:
 
 	case *objects.NewSessionCreated:
 		m.serverSalt = message.ServerSalt
-		err := m.SaveSession()
 		m.DebugPrintf("Decode the message:%d type:NewSessionCreated Msgid:%d\n", message.FirstMsgID, msg.GetMsgID())
-		if err != nil {
-			m.warnError(errors.Wrap(err, "saving session"))
-		}
 
 	case *objects.LoggedWithQrCode:
 		m.DebugPrintf("Decode the message:%d type:LoggedWithQrCode loggedAt:%d\n", message.LoggedAt)

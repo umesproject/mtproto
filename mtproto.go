@@ -99,7 +99,7 @@ type Config struct {
 func NewMTProto(c Config) (*MTProto, error) {
 	m := &MTProto{
 		addr:                  c.ServerHost,
-		encrypted:             c.Session != nil,
+		encrypted:             c.Session != nil && len(c.Session.Key) > 0,
 		sessionId:             utils.GenerateSessionID(),
 		serviceChannel:        make(chan tl.Object),
 		publicKey:             c.PublicKey,

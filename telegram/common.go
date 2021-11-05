@@ -29,6 +29,7 @@ type Client struct {
 }
 
 type ClientConfig struct {
+	LiveUpdates     bool
 	Debug           bool
 	Session         *session.Session
 	ServerHost      string
@@ -95,7 +96,10 @@ func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not 
 		config:  &c,
 	}
 
-	client.AddCustomServerRequestHandler(client.handleSpecialRequests())
+	// TODO: Scommentare sotto per leggere gli update in tempo rale
+	if client.config.LiveUpdates {
+		client.AddCustomServerRequestHandler(client.handleSpecialRequests())
+	}
 	client.initConnectionParams = &InitConnectionParams{
 		ApiID:          int32(c.AppID),
 		DeviceModel:    c.DeviceModel,

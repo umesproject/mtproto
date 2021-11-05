@@ -509,7 +509,6 @@ messageTypeSwitching:
 		goto messageTypeSwitching
 
 	default:
-		log.Println("GOT DATA", message)
 		processed := false
 		for _, f := range m.serverRequestHandlers {
 			processed = f(message)

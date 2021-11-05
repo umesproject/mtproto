@@ -29,7 +29,8 @@ type Client struct {
 }
 
 type ClientConfig struct {
-	Session         session.Session
+	Debug           bool
+	Session         *session.Session
 	ServerHost      string
 	DeviceModel     string
 	SystemVersion   string
@@ -66,7 +67,8 @@ func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not 
 	}
 
 	m, err := mtproto.NewMTProto(mtproto.Config{
-		Session:    &c.Session,
+		Session:    c.Session,
+		Debug:      c.Debug,
 		ServerHost: c.ServerHost,
 		PublicKey:  publicKeys[0],
 		ProxyUrl:   c.ProxyUrl,

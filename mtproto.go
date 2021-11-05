@@ -560,7 +560,7 @@ func (m *MTProto) tryToProcessErr(e *ErrResponseCode) error {
 		//m.expectedTypes = utils.NewSyncIntReflectTypes()
 		//m.seqNo = 0
 
-		log.Println("Connecting to IP", newIP)
+		log.Println("[1]Connecting to IP", newIP)
 
 		err = m.CreateConnection()
 		if err != nil {
@@ -600,12 +600,12 @@ func (m *MTProto) ConnectAgainToDC(dc int) error {
 	m.routineswg.Wait()
 	m.addr = newIP
 	m.encrypted = false
-	//m.sessionId = utils.GenerateSessionID()
-	//m.serviceChannel = make(chan tl.Object)
+	m.sessionId = utils.GenerateSessionID()
+	m.serviceChannel = make(chan tl.Object)
 	m.serviceModeActivated = false
-	//m.responseChannels = utils.NewSyncIntObjectChan()
-	//m.expectedTypes = utils.NewSyncIntReflectTypes()
-	//m.seqNo = 0
+	m.responseChannels = utils.NewSyncIntObjectChan()
+	m.expectedTypes = utils.NewSyncIntReflectTypes()
+	m.seqNo = 0
 
 	log.Println("Connecting to IP", newIP)
 

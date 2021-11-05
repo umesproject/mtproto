@@ -111,7 +111,7 @@ func NewMTProto(c Config) (*MTProto, error) {
 		session:               c.Session,
 	}
 
-	if c.Session != nil {
+	if c.Session != nil && len(c.Session.Key) > 0 {
 		m.LoadSession(c.Session)
 	}
 

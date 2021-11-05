@@ -66,6 +66,7 @@ func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not 
 	}
 
 	m, err := mtproto.NewMTProto(mtproto.Config{
+		Session:    &c.Session,
 		ServerHost: c.ServerHost,
 		PublicKey:  publicKeys[0],
 		ProxyUrl:   c.ProxyUrl,

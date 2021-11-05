@@ -50,6 +50,7 @@ type MTProto struct {
 	encrypted  bool
 	sessionId  int64
 
+	debug bool
 	// общий мьютекс
 	mutex sync.Mutex
 
@@ -88,8 +89,8 @@ type MTProto struct {
 type customHandlerFunc = func(i any) bool
 
 type Config struct {
-	Session *session.Session
-
+	Session    *session.Session
+	Debug      bool
 	ServerHost string
 	PublicKey  *rsa.PublicKey
 	ProxyUrl   string
@@ -575,7 +576,7 @@ func (m *MTProto) tryToProcessErr(e *ErrResponseCode) error {
 }
 
 func (m *MTProto) DebugPrintf(format string, a ...interface{}) (n int, err error) {
-	if true == true {
+	if m.debug {
 		return fmt.Printf(format, a...)
 	}
 

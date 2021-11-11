@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"math/big"
 
 	"github.com/pkg/errors"
@@ -25,6 +26,7 @@ import (
 // https://tlgrm.ru/docs/mtproto/auth_key
 // https://core.telegram.org/mtproto/auth_key
 func (m *MTProto) makeAuthKey() error { // nolint don't know how to make method smaller
+	log.Println("@@@@@@@@@@@@@@@@@@@@@ NEW AUTH KEY")
 	m.serviceModeActivated = true
 	nonceFirst := tl.RandomInt128()
 	res, err := m.reqPQ(nonceFirst)

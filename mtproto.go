@@ -8,7 +8,6 @@ package mtproto
 import (
 	"context"
 	"crypto/rsa"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -134,6 +133,8 @@ func NewMTProto(c Config) (*MTProto, error) {
 		m.LoadSession(s)
 	}
 
+	log.Println("Mtproto host", m.addr)
+
 	return m, nil
 }
 
@@ -145,20 +146,12 @@ func (m *MTProto) Close() {
 }
 
 func (m *MTProto) GetSessionJSON() string {
-	// m.authKey = s.Key
-	// 	m.authKeyHash = s.Hash
-	// 	m.serverSalt = s.Salt
-	// 	m.addr = s.Hostname
-
-	s := session.Session{
+	return m.tokensStorage.GetJSON(&session.Session{
 		Key:      m.authKey,
 		Hash:     m.authKeyHash,
 		Salt:     m.serverSalt,
 		Hostname: m.addr,
-	}
-
-	res, _ := json.Marshal(s)
-	return string(res)
+	})
 }
 
 func (m *MTProto) SetDCList(in map[int]string) {
@@ -244,11 +237,11 @@ func (m *MTProto) makeRequest(data tl.Object, conID int64, expectedTypes ...refl
 		return nil, errors.Wrap(err, "sending message")
 	}
 
-	//等待服务器返回数据,设置一个超时
 	select {
 	case response := <-resp: //拿到锁
 		switch r := response.(type) {
 		case *objects.RpcError:
+			log.Println("Rpc error")
 			realErr := RpcErrorToNative(r)
 			//fmt.Println(r.ErrorMessage)
 			err = m.tryToProcessErr(realErr.(*ErrResponseCode))
@@ -262,18 +255,21 @@ func (m *MTProto) makeRequest(data tl.Object, conID int64, expectedTypes ...refl
 			fmt.Println("errorSessionConfigsChanged")
 			return m.makeRequest(data, conID, expectedTypes...)
 		case *BadMsgError:
+			log.Println("Bad msg error")
+
 			return nil, errors.New("Reconnect")
 		case *objects.BadServerSalt:
+			log.Println("Bad Server salt")
+
 			err := m.Reconnect()
 			if err != nil {
 				return nil, errors.New("BadServerSalt")
 			}
 			return m.makeRequest(data, conID, expectedTypes...)
-
 		}
 
 		return tl.UnwrapNativeTypes(response), nil
-	case <-time.After(60 * time.Second): //超时60s
+	case <-time.After(55 * time.Second): //超时60s
 		return nil, errors.New("makeRequest waiting timeout")
 	}
 
@@ -601,11 +597,20 @@ func (m *MTProto) tryToProcessErr(e *ErrResponseCode) error {
 }
 
 func (m *MTProto) DebugPrintf(format string, a ...interface{}) (n int, err error) {
-	if true == true {
+	if true != true {
 		return fmt.Printf(format, a...)
 	}
 
 	return 0, nil
+}
+
+func (m *MTProto) GetDcIp(dc int) (string, error) {
+	newIP, found := m.dclist[dc]
+	if !found {
+		return "", errors.New(fmt.Sprint("dc", dc, "ip not found"))
+	}
+
+	return newIP, nil
 }
 
 // Author: Kliton
@@ -614,8 +619,9 @@ func (m *MTProto) ConnectAgainToDC(dc int) error {
 	newIP, found := m.dclist[dc]
 	if !found {
 		return errors.New(fmt.Sprint("dc", dc, "ip not found"))
-
 	}
+
+	log.Println("[CHANGE DC] connecting to IP", newIP)
 
 	log.Println("Disconnecting conn id", m.ConnId)
 	err := m.Disconnect(m.ConnId)

@@ -53,6 +53,10 @@ func (l *genericFileSessionLoader) Load() (*Session, error) {
 		return nil, errors.Wrap(err, "reading file")
 	}
 
+	if len(data) == 0 {
+		return nil, errs.NotFound("file", l.path)
+	}
+
 	file := new(tokenStorageFormat)
 	err = json.Unmarshal(data, file)
 	if err != nil {
@@ -84,6 +88,14 @@ func (l *genericFileSessionLoader) Store(s *Session) error {
 	data, _ := json.Marshal(file)
 
 	return ioutil.WriteFile(l.path, data, 0600)
+}
+
+func (l *genericFileSessionLoader) GetJSON(s *Session) string {
+	file := new(tokenStorageFormat)
+	file.writeSession(s)
+	data, _ := json.Marshal(file)
+
+	return string(data)
 }
 
 type tokenStorageFormat struct {

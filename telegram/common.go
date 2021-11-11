@@ -6,7 +6,6 @@
 package telegram
 
 import (
-	"log"
 	"reflect"
 	"runtime"
 
@@ -68,8 +67,6 @@ func NewClient(c ClientConfig) (*Client, error) { //nolint: gocritic arg is not 
 	if err != nil {
 		return nil, errors.Wrap(err, "reading public keys")
 	}
-
-	log.Println("Public key used", publicKeys[0])
 
 	m, err := mtproto.NewMTProto(mtproto.Config{
 		AuthKeyFile: c.SessionFile,

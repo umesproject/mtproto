@@ -7,10 +7,16 @@ package mtproto
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"os"
+	"os/user"
+	"path/filepath"
 
+	"github.com/pkg/errors"
 	"github.com/umesproject/mtproto/internal/encoding/tl"
 	"github.com/umesproject/mtproto/internal/mtproto/objects"
+	"github.com/xelaj/go-dry"
 )
 
 type any = interface{}
@@ -49,4 +55,58 @@ func check(err error) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func PrepareAppStorageForExamples() (appStoragePath string) {
+	appStorage, err := GetAppStorage("mtproto-example", NamespaceUser)
+	dry.PanicIfErr(err)
+
+	if !dry.FileExists(appStorage) {
+		if !dry.PathIsWritable(appStorage) {
+			fmt.Printf("cant create app local storage at %v\n", appStorage)
+			os.Exit(1)
+		}
+		err := os.MkdirAll(appStorage, 0755)
+		dry.PanicIfErr(err)
+	}
+
+	return appStorage
+}
+
+type Namespace uint8
+
+const (
+	NamespaceUnknown Namespace = iota
+	NamespaceGlobal
+	NamespaceUser
+	NamespaceDirectory
+)
+
+func GetAppStorage(appName string, namespace Namespace) (string, error) {
+	switch namespace {
+	case NamespaceGlobal:
+		return filepath.Join("var", "lib", appName), nil
+	case NamespaceUser:
+		p, err := GetAppStorage(appName, NamespaceGlobal)
+		if err != nil {
+			return "", err
+		}
+		u, _ := user.Current()
+		userPath, err := GetUserNamespaceDir(u.Username)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(userPath, p), nil
+	default:
+		return "", errors.New("Incompatible feature for this namespace")
+	}
+}
+
+func GetUserNamespaceDir(username string) (string, error) {
+	u, err := user.Lookup(username)
+	if err != nil {
+		return "", errors.Wrapf(err, "looking up '%v'", username)
+	}
+
+	return filepath.Join(u.HomeDir, ".local"), nil
 }

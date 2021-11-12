@@ -173,19 +173,19 @@ func (m *Client) RefreshServerConfig() error {
 	return nil
 }
 
-func (m *Client) IsSessionRegistred() (bool, error) {
-	_, err := m.UsersGetFullUser(&InputUserSelf{})
+func (m *Client) IsSessionRegistred() (bool, *UserFull, error) {
+	userFull, err := m.UsersGetFullUser(&InputUserSelf{})
 	if err == nil {
-		return true, nil
+		return true, userFull, nil
 	}
 	var errCode *mtproto.ErrResponseCode
 	if errors.As(err, &errCode) {
 		if errCode.Message == "AUTH_KEY_UNREGISTERED" {
-			return false, nil
+			return false, nil, nil
 		}
-		return false, err
+		return false, nil, err
 	} else {
-		return false, err
+		return false, nil, err
 	}
 }
 

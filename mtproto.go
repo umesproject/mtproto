@@ -306,7 +306,6 @@ func (m *MTProto) StartPinging(ctx context.Context, connId int64) {
 
 	go func() {
 		ticker := time.NewTicker(time.Minute)
-		fmt.Println(connId, "ping start")
 		defer ticker.Stop()
 		defer m.routineswg.Done()
 		defer func() {

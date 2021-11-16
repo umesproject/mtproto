@@ -92,3 +92,26 @@ func SaveRsaKey(key *rsa.PublicKey) string {
 
 	return buf.String()
 }
+
+func Read() ([]*rsa.PublicKey, error) {
+
+	data := []byte(KeysData)
+	keys := make([]*rsa.PublicKey, 0)
+	for {
+		block, rest := pem.Decode(data)
+		if block == nil {
+			break
+		}
+
+		key, err := pemBytesToRsa(block.Bytes)
+		if err != nil {
+			const offset = 1 // +1 потому что считаем с 0
+			return nil, errors.Wrapf(err, "decoding key №%d", len(keys)+offset)
+		}
+
+		keys = append(keys, key)
+		data = rest
+	}
+
+	return keys, nil
+}

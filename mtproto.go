@@ -235,37 +235,24 @@ func (m *MTProto) Reconnect(makeAuthKeyAgain bool) error {
 // you just need to run and forget about it
 func (m *MTProto) startPinging(ctx context.Context) {
 	m.routineswg.Add(1)
-
+	ticker := time.Tick(time.Minute)
 	go func() {
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-		defer m.routineswg.Done()
-		defer func() {
-			fmt.Println("StartPinging is exit!")
-		}()
+		defer m.recoverGoroutine()
 		for {
 			select {
 			case <-ctx.Done():
+				m.routineswg.Done()
 				return
-			case <-ticker.C:
-				//_, err := m.ping(0xCADACADA) //nolint:gomnd not magic
-				_, err := m.ping_delay_disconnect(time.Now().UnixNano(), 75) //保持链接
+			case <-ticker:
+				_, err := m.ping(0xCADACADA) //nolint:gomnd not magic
 				if err != nil {
-					fmt.Println("ping unsuccsesful")
-					//go func() {
-					//	err = m.Reconnect()
-					//	if err != nil {
-					//		m.warnError(errors.Wrap(err, "can't reconnect"))
-					//	}
-					//}()
-					//return
-				} else {
-					fmt.Println("ping succsesful")
+					m.warnError(errors.Wrap(err, "ping unsuccsesful"))
 				}
 			}
 		}
 	}()
 }
+
 func (m *MTProto) startReadingResponses(ctx context.Context) {
 	m.routineswg.Add(1)
 	go func() {

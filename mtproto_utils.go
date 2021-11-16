@@ -6,12 +6,14 @@
 package mtproto
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/pkg/errors"
 	"github.com/umesproject/mtproto/internal/encoding/tl"
 	"github.com/umesproject/mtproto/internal/session"
 	"github.com/umesproject/mtproto/internal/utils"
+	"github.com/xelaj/go-dry"
 )
 
 // helper methods
@@ -67,4 +69,15 @@ func (m *MTProto) LoadSession(s *session.Session) {
 	m.authKeyHash = s.Hash
 	m.serverSalt = s.Salt
 	m.addr = s.Hostname
+}
+
+func (m *MTProto) recoverGoroutine() {
+	if r := recover(); r != nil {
+		if m.RecoverFunc != nil {
+			fmt.Println(dry.StackTrace(0))
+			m.RecoverFunc(r)
+		} else {
+			panic(r)
+		}
+	}
 }

@@ -1,8 +1,3 @@
-// Copyright (c) 2020-2021 KHS Films
-//
-// This file is a part of mtproto package.
-// See https://github.com/umesproject/mtproto/blob/master/LICENSE for details
-
 package mtproto
 
 import (
@@ -13,10 +8,10 @@ import (
 	"io"
 	"log"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/k0kubun/pp"
 	"github.com/pkg/errors"
 
 	"github.com/umesproject/mtproto/internal/encoding/tl"
@@ -29,15 +24,11 @@ import (
 )
 
 type MTProto struct {
+	debug        bool
 	addr         string
-	ProxyUrl     string
-	transport    map[int64]*transport.Transport
-	ConnId       int64
-	stopRoutines map[int64]context.CancelFunc // stopping ping, read, etc. routines
-	routineswg   sync.WaitGroup               // WaitGroup for being sure that all routines are stopped
-	Reconnecting bool
-	Ctx          context.Context
-	Cancelfunc   context.CancelFunc
+	transport    transport.Transport
+	stopRoutines context.CancelFunc // stopping ping, read, etc. routines
+	routineswg   sync.WaitGroup     // WaitGroup for being sure that all routines are stopped
 
 	// ключ авторизации. изменять можно только через setAuthKey
 	authKey []byte
@@ -50,7 +41,6 @@ type MTProto struct {
 	encrypted  bool
 	sessionId  int64
 
-	debug bool
 	// общий мьютекс
 	mutex sync.Mutex
 
@@ -107,7 +97,6 @@ func NewMTProto(c Config) (*MTProto, error) {
 		expectedTypes:         utils.NewSyncIntReflectTypes(),
 		serverRequestHandlers: make([]customHandlerFunc, 0),
 		dclist:                defaultDCList(),
-		ProxyUrl:              c.ProxyUrl,
 		session:               c.Session,
 	}
 
@@ -116,13 +105,6 @@ func NewMTProto(c Config) (*MTProto, error) {
 	}
 
 	return m, nil
-}
-
-func (m *MTProto) Close() {
-	//关闭
-	if m.Cancelfunc != nil {
-		m.Cancelfunc()
-	}
 }
 
 func (m *MTProto) SetDCList(in map[int]string) {
@@ -153,18 +135,15 @@ func (m *MTProto) GetSessionJSON() string {
 
 func (m *MTProto) CreateConnection() error {
 	ctx, cancelfunc := context.WithCancel(context.Background())
-	connId, err := m.connect(ctx)
+	m.stopRoutines = cancelfunc
+
+	err := m.connect(ctx)
 	if err != nil {
 		return err
 	}
-	if m.stopRoutines == nil {
-		m.stopRoutines = make(map[int64]context.CancelFunc)
-	}
-	m.stopRoutines[connId] = cancelfunc
 
-	fmt.Println(connId, "Successfully linked to the server!")
 	// start reading responses from the server
-	m.StartReadingResponses(ctx, connId)
+	m.startReadingResponses(ctx)
 
 	// get new authKey if need
 	if !m.encrypted {
@@ -175,133 +154,86 @@ func (m *MTProto) CreateConnection() error {
 	}
 
 	// start keepalive pinging
-	m.StartPinging(ctx, connId)
+	m.startPinging(ctx)
 
 	return nil
 }
 
 const defaultTimeout = 65 * time.Second // 60 seconds is maximum timeouts without pings
 
-func (m *MTProto) connect(ctx context.Context) (int64, error) {
+func (m *MTProto) connect(ctx context.Context) error {
 	var err error
-	tran, err := transport.NewTransport(
+	m.transport, err = transport.NewTransport(
 		m,
 		transport.TCPConnConfig{
-			Ctx:      ctx,
-			Host:     m.addr,
-			Timeout:  defaultTimeout,
-			ProxyUrl: m.ProxyUrl,
+			Ctx:     ctx,
+			Host:    m.addr,
+			Timeout: defaultTimeout,
 		},
 		mode.Intermediate,
 	)
 	if err != nil {
-		return 0, errors.Wrap(err, "can't connect")
+		return errors.Wrap(err, "can't connect")
 	}
-	m.ConnId = time.Now().UnixNano()
-	if m.transport == nil {
-		m.transport = make(map[int64]*transport.Transport)
-	}
-	m.transport[m.ConnId] = &tran
 
-	CloseOnCancel(ctx, *m.transport[m.ConnId])
-	return m.ConnId, nil
+	CloseOnCancel(ctx, m.transport)
+	return nil
 }
 
-func (m *MTProto) makeRequest(data tl.Object, conID int64, expectedTypes ...reflect.Type) (any, error) {
-	resp, err := m.sendPacket(data, conID, expectedTypes...)
-	//fmt.Printf("m seqNo:%d MSgid:%d\n",m.seqNo,m.msgId)
+func (m *MTProto) makeRequest(data tl.Object, expectedTypes ...reflect.Type) (any, error) {
+	resp, err := m.sendPacket(data, expectedTypes...)
 	if err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") || strings.Contains(err.Error(), "connection was aborted") {
-			// 如果链接断开
-			//err:=m.Reconnect()
-			//if err != nil {
-			//	return nil, errors.Wrap(err, "makeRequest Reconnect")
-			//}
-
-			go func() {
-				m.Reconnect()
-			}()
-		}
 		return nil, errors.Wrap(err, "sending message")
 	}
 
-	//等待服务器返回数据,设置一个超时
-	select {
-	case response := <-resp: //拿到锁
-		switch r := response.(type) {
-		case *objects.RpcError:
-			realErr := RpcErrorToNative(r)
-			//fmt.Println(r.ErrorMessage)
-			err = m.tryToProcessErr(realErr.(*ErrResponseCode))
-			if err != nil {
-				return nil, err
-			}
+	response := <-resp
 
-			return m.makeRequest(data, conID, expectedTypes...)
+	switch r := response.(type) {
+	case *objects.RpcError:
+		realErr := RpcErrorToNative(r)
 
-		case *errorSessionConfigsChanged:
-			fmt.Println("errorSessionConfigsChanged")
-			return m.makeRequest(data, conID, expectedTypes...)
-		case *BadMsgError:
-			return nil, errors.New("Reconnect")
-		case *objects.BadServerSalt:
-			err := m.Reconnect()
-			if err != nil {
-				return nil, errors.New("BadServerSalt")
-			}
-			return m.makeRequest(data, conID, expectedTypes...)
-
+		err = m.tryToProcessErr(realErr.(*ErrResponseCode))
+		if err != nil {
+			return nil, err
 		}
 
-		return tl.UnwrapNativeTypes(response), nil
-	case <-time.After(60 * time.Second): //超时60s
-		return nil, errors.New("makeRequest waiting timeout")
+		return m.makeRequest(data, expectedTypes...)
+
+	case *errorSessionConfigsChanged:
+		return m.makeRequest(data, expectedTypes...)
+
 	}
 
-	return nil, nil
+	return tl.UnwrapNativeTypes(response), nil
 }
 
 // Disconnect is closing current TCP connection and stopping all routines like pinging, reading etc.
-func (m *MTProto) Disconnect(ConnId int64) error {
+func (m *MTProto) Disconnect() error {
 	// stop all routines
-	m.stopRoutines[ConnId]()
+	m.stopRoutines()
 
 	// TODO: close ALL CHANNELS
 
 	return nil
 }
 
-func (m *MTProto) Reconnect() error {
-	if m.Reconnecting {
-		return nil
+func (m *MTProto) Reconnect(makeAuthKeyAgain bool) error {
+	if makeAuthKeyAgain {
+		m.encrypted = false
 	}
-	m.Reconnecting = true
-	defer func() {
-		m.Reconnecting = false
-	}()
-	err := m.Disconnect(m.ConnId)
+
+	err := m.Disconnect()
 	if err != nil {
 		return errors.Wrap(err, "disconnecting")
 	}
-	//fmt.Println("Reconnect m.mutex.Lock()")
-	//m.mutex.Lock()
-	//for _, k := range m.responseChannels.Keys() {
-	//	v, _ := m.responseChannels.Get(k)
-	//	if cap(v)==0{
-	//		v <- &BadMsgError{}
-	//	}
-	//	//m.responseChannels.Delete(k)
-	//}
-	//m.mutex.Unlock()
-	//fmt.Println("Reconnect m.mutex.Unlock()")
-	//m.routineswg.Wait()
+
 	err = m.CreateConnection()
 	return errors.Wrap(err, "recreating connection")
 }
 
 // StartPinging pings the server that everything is fine, the client is online
 // you just need to run and forget about it
-func (m *MTProto) StartPinging(ctx context.Context, connId int64) {
+func (m *MTProto) startPinging(ctx context.Context) {
 	m.routineswg.Add(1)
 
 	go func() {
@@ -309,7 +241,7 @@ func (m *MTProto) StartPinging(ctx context.Context, connId int64) {
 		defer ticker.Stop()
 		defer m.routineswg.Done()
 		defer func() {
-			fmt.Println(connId, "StartPinging is exit!")
+			fmt.Println("StartPinging is exit!")
 		}()
 		for {
 			select {
@@ -334,72 +266,40 @@ func (m *MTProto) StartPinging(ctx context.Context, connId int64) {
 		}
 	}()
 }
-
-func (m *MTProto) StartReadingResponses(ctx context.Context, connId int64) {
+func (m *MTProto) startReadingResponses(ctx context.Context) {
 	m.routineswg.Add(1)
 	go func() {
 		defer m.routineswg.Done()
-		defer func() {
-			fmt.Println(connId, "StartReadingResponses is exit!")
-		}()
-		fmt.Println(connId, "StartReadingResponses start")
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				err := m.readMsg(connId)
-				if err != nil {
-					time.Sleep(time.Millisecond * 100)
+				err := m.readMsg()
+				switch err {
+				case nil: // skip
+				case context.Canceled:
+					return
+				case io.EOF:
+					err = m.Reconnect(false)
+					if err != nil {
+						m.warnError(errors.Wrap(err, "can't reconnect"))
+					}
+				default:
+					check(err)
 				}
-				//switch err {
-				//case nil: // skip
-				//case context.Canceled:
-				//	return
-				//case io.EOF:
-				//	fmt.Println("ioEOF")
-				//	go func() {
-				//		err = m.Reconnect()
-				//		if err != nil {
-				//			m.warnError(errors.Wrap(err, "can't reconnect"))
-				//		}
-				//	}()
-				//	return
-				//default:
-				//	if strings.Contains(err.Error(),"i/o timeout"){
-				//		fmt.Println(err.Error())
-				//		go func() {
-				//			err = m.Reconnect()
-				//			if err != nil {
-				//				m.warnError(errors.Wrap(err, "can't reconnect"))
-				//			}
-				//		}()
-				//		return
-				//		//err = m.Reconnect()
-				//		//if err != nil {
-				//		//	m.warnError(errors.Wrap(err, "can't reconnect"))
-				//		//}else {
-				//		//	fmt.Println("timeout重新链接成功")
-				//		//	continue
-				//		//}
-				//
-				//	}
-				//	check(err)
-				//}
 			}
 		}
 	}()
 }
 
-func (m *MTProto) readMsg(connId int64) error {
+func (m *MTProto) readMsg() error {
 	if m.transport == nil {
 		return errors.New("must setup connection before reading messages")
 	}
-	//m.routineswg.Add(1)
-	//fmt.Println("m.transport.ReadMsg() start")
-	response, err := (*m.transport[connId]).ReadMsg()
-	//m.routineswg.Done()
-	//fmt.Println("m.transport.ReadMsg() end")
+
+	response, err := m.transport.ReadMsg()
 	if err != nil {
 		if e, ok := err.(transport.ErrCode); ok {
 			return &ErrResponseCode{Code: int(e)}
@@ -411,7 +311,6 @@ func (m *MTProto) readMsg(connId int64) error {
 			return errors.Wrap(err, "reading message")
 		}
 	}
-	//fmt.Printf("%d receivemsgID:%d content:%s\n", connId, response.GetMsgID(), string(response.GetMsg()))
 
 	if m.serviceModeActivated {
 		var obj tl.Object
@@ -423,10 +322,8 @@ func (m *MTProto) readMsg(connId int64) error {
 		m.serviceChannel <- obj
 		return nil
 	}
-	//fmt.Println(response.GetSeqNo())
-	//fmt.Println("processResponse start")
+
 	err = m.processResponse(response)
-	//fmt.Println("processResponse end")
 	if err != nil {
 		return errors.Wrap(err, "processing response")
 	}
@@ -448,7 +345,6 @@ func (m *MTProto) processResponse(msg messages.Common) error {
 messageTypeSwitching:
 	switch message := data.(type) {
 	case *objects.MessageContainer:
-
 		for _, v := range *message {
 			err := m.processResponse(v)
 			if err != nil {
@@ -457,40 +353,26 @@ messageTypeSwitching:
 		}
 
 	case *objects.BadServerSalt:
-		m.DebugPrintf("Decode the message:%d type:BadServerSalt Msgid:%d\n", message.BadMsgID, msg.GetMsgID())
 		m.serverSalt = message.NewSalt
-		//fmt.Println("BadServerSalt m.mutex.Lock()")
-		//m.mutex.Lock()
-		//for _, k := range m.responseChannels.Keys() {
-		//	v, _ := m.responseChannels.Get(k)
-		//	v <- &errorSessionConfigsChanged{}
-		//}
-		//m.mutex.Unlock()
-		//fmt.Println("BadServerSalt m.mutex.Unlock()")
-		m.writeRPCResponse(int(message.BadMsgID), message)
+
+		m.mutex.Lock()
+		for _, k := range m.responseChannels.Keys() {
+			v, _ := m.responseChannels.Get(k)
+			v <- &errorSessionConfigsChanged{}
+		}
+		m.mutex.Unlock()
 
 	case *objects.NewSessionCreated:
 		m.serverSalt = message.ServerSalt
-		m.DebugPrintf("Decode the message:%d type:NewSessionCreated Msgid:%d\n", message.FirstMsgID, msg.GetMsgID())
-
-	case *objects.LoggedWithQrCode:
-		m.DebugPrintf("Decode the message:%d type:LoggedWithQrCode loggedAt:%d\n", message.LoggedAt)
-
-	case *objects.Pong:
+	case *objects.Pong, *objects.MsgsAck:
 		// игнорим, пришло и пришло, че бубнить то
-		m.writeRPCResponse(int(message.MsgID), message)
-		m.DebugPrintf("Decode the message:%d type:Pong Msgid:%d\n", message.MsgID, msg.GetMsgID())
-
-	case *objects.MsgsAck:
-		m.DebugPrintf("Decode the message:%v type:MsgsAck Msgid:%d\n", message.MsgIDs, msg.GetMsgID())
 
 	case *objects.BadMsgNotification:
-		m.DebugPrintf("Decode the message:%d type:BadMsgNotification Msgid:%d\n", message.BadMsgID, msg.GetMsgID())
+		pp.Println(message)
 		panic(message) // for debug, looks like this message is important
 		return BadMsgErrorFromNative(message)
 
 	case *objects.RpcResult:
-		m.DebugPrintf("Decode the message:%d type:RpcResult Msgid:%d\n", message.ReqMsgID, msg.GetMsgID())
 		obj := message.Obj
 		if v, ok := obj.(*objects.GzipPacked); ok {
 			obj = v.Obj
@@ -538,34 +420,7 @@ messageTypeSwitching:
 func (m *MTProto) tryToProcessErr(e *ErrResponseCode) error {
 	switch e.Message {
 	case "PHONE_MIGRATE_X":
-		newIP, found := m.dclist[e.AdditionalInfo.(int)]
-		if !found {
-			return errors.Wrapf(e, "DC with id %v not found", e.AdditionalInfo)
-		}
-
-		log.Println("Disconnecting conn id", m.ConnId)
-		err := m.Disconnect(m.ConnId)
-		if err != nil {
-			return errors.Wrap(err, "disconnecting")
-		}
-		//time.Sleep(time.Second)
-		m.routineswg.Wait()
-		m.addr = newIP
-		m.encrypted = false
-		//m.sessionId = utils.GenerateSessionID()
-		//m.serviceChannel = make(chan tl.Object)
-		m.serviceModeActivated = false
-		//m.responseChannels = utils.NewSyncIntObjectChan()
-		//m.expectedTypes = utils.NewSyncIntReflectTypes()
-		//m.seqNo = 0
-
-		log.Println("[1]Connecting to IP", newIP)
-
-		err = m.CreateConnection()
-		if err != nil {
-			return errors.Wrap(err, "recreating connection")
-		}
-		return errors.New("PHONE_MIGRATE_X_NewIP") // 返回一个重定向错误
+		return m.ConnectAgainToDC(e.AdditionalInfo.(int))
 	case "FILE_MIGRATE_X":
 		return e
 	default:
@@ -590,28 +445,8 @@ func (m *MTProto) ConnectAgainToDC(dc int) error {
 
 	}
 
-	log.Println("Disconnecting conn id", m.ConnId)
-	err := m.Disconnect(m.ConnId)
-	if err != nil {
-		return errors.Wrap(err, "disconnecting")
-	}
-	//time.Sleep(time.Second)
-	m.routineswg.Wait()
+	log.Println("Connecting to [DC]", dc, "with [IP]", newIP)
 	m.addr = newIP
-	m.encrypted = false
-	m.sessionId = utils.GenerateSessionID()
-	m.serviceChannel = make(chan tl.Object)
-	m.serviceModeActivated = false
-	m.responseChannels = utils.NewSyncIntObjectChan()
-	m.expectedTypes = utils.NewSyncIntReflectTypes()
-	m.seqNo = 0
-
-	log.Println("Connecting to IP", newIP)
-
-	err = m.CreateConnection()
-	if err != nil {
-		return errors.Wrap(err, "recreating connection")
-	}
-
-	return nil
+	err := m.Reconnect(true)
+	return err
 }

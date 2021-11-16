@@ -6,10 +6,8 @@
 package mtproto
 
 import (
-	"fmt"
 	"reflect"
 	"strconv"
-	"time"
 
 	"github.com/pkg/errors"
 	"github.com/xelaj/errs"
@@ -20,7 +18,7 @@ import (
 	"github.com/umesproject/mtproto/internal/utils"
 )
 
-func (m *MTProto) sendPacket(request tl.Object, conID int64, expectedTypes ...reflect.Type) (chan tl.Object, error) {
+func (m *MTProto) sendPacket(request tl.Object, expectedTypes ...reflect.Type) (chan tl.Object, error) {
 	msg, err := tl.Marshal(request)
 	if err != nil {
 		return nil, errors.Wrap(err, "encoding request message")
@@ -30,7 +28,7 @@ func (m *MTProto) sendPacket(request tl.Object, conID int64, expectedTypes ...re
 		data  messages.Common
 		msgID = utils.GenerateMessageId()
 	)
-	m.msgId = msgID
+
 	// adding types for parser if required
 	if len(expectedTypes) > 0 {
 		m.expectedTypes.Add(int(msgID), expectedTypes)
@@ -41,11 +39,7 @@ func (m *MTProto) sendPacket(request tl.Object, conID int64, expectedTypes ...re
 	if isNullableResponse(request) {
 		go func() { resp <- &objects.Null{} }() // goroutine cuz we don't read from it RIGHT NOW
 	} else {
-		//fmt.Println("getRespChannel m.mutex.Lock()")
-		//m.mutex.Lock()
 		m.responseChannels.Add(int(msgID), resp)
-		//m.mutex.Unlock()
-		//fmt.Println("getRespChannel m.mutex.Unlock()")
 	}
 
 	if m.encrypted {
@@ -65,15 +59,11 @@ func (m *MTProto) sendPacket(request tl.Object, conID int64, expectedTypes ...re
 	m.seqNoMutex.Lock()
 	defer m.seqNoMutex.Unlock()
 
-	//fmt.Println("WriteMsg start")
-	//m.routineswg.Add(1)
-	err = (*m.transport[conID]).WriteMsg(data, MessageRequireToAck(request))
-	//m.routineswg.Done()
-	//fmt.Println("WriteMsg end")
+	err = m.transport.WriteMsg(data, MessageRequireToAck(request))
 	if err != nil {
 		return nil, errors.Wrap(err, "sending request")
 	}
-	m.DebugPrintf("Decode the message:%d type:%s connectID:%d\n", msgID, reflect.TypeOf(request).Elem().Name(), conID)
+
 	if m.encrypted {
 		// since we sending this message, we are incrementing the seqno BUT ONLY when we
 		// are sending an encrypted message. why? I don’t know. But the fact remains:
@@ -81,29 +71,17 @@ func (m *MTProto) sendPacket(request tl.Object, conID int64, expectedTypes ...re
 		// messages with a smaller one.
 		m.seqNo += 2
 	}
+
 	return resp, nil
 }
 
 func (m *MTProto) writeRPCResponse(msgID int, data tl.Object) error {
-	//fmt.Println("writeRPCResponse m.mutex.Lock()")
-	//m.mutex.Lock()
-	//defer func() {
-	//	m.mutex.Unlock()
-	//	//fmt.Println("writeRPCResponse m.mutex.Unlock()")
-	//}()
 	v, ok := m.responseChannels.Get(msgID)
-
 	if !ok {
 		return errs.NotFound("msgID", strconv.Itoa(msgID))
 	}
 
-	select {
-	case v <- data:
-		break
-	case <-time.After(1 * time.Second):
-		fmt.Println("writeRPCResponse timeout")
-		break
-	}
+	v <- data
 
 	m.responseChannels.Delete(msgID)
 	m.expectedTypes.Delete(msgID)

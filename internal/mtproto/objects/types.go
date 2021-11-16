@@ -220,39 +220,25 @@ func (*RpcAnswerDropped) CRC() uint32 {
 	return 0xa43ad8b7 //nolint:gomnd not magic
 }
 
-type FutureSalts interface {
-	tl.Object
-	ImplementsFutureSalts()
-}
-type FutureSalt interface {
-	tl.Object
-	ImplementsFutureSalt()
-}
-
-type FutureSaltObj struct {
+type FutureSalt struct {
 	ValidSince int32
 	ValidUntil int32
 	Salt       int64
 }
 
-func (*FutureSaltObj) ImplementsFutureSalt() {}
-
-func (*FutureSaltObj) CRC() uint32 {
+func (*FutureSalt) CRC() uint32 {
 	return 0x0949d9dc //nolint:gomnd not magic
-	//return 0x60ef69da
 }
 
-type FutureSaltsObj struct {
+type FutureSalts struct {
 	ReqMsgID int64
 	Now      int32
-	Salts    []*FutureSaltObj
+	Salts    []*FutureSalt
 }
 
-func (*FutureSaltsObj) CRC() uint32 {
+func (*FutureSalts) CRC() uint32 {
 	return 0xae500895 //nolint:gomnd not magic
 }
-
-func (*FutureSaltsObj) ImplementsFutureSalts() {}
 
 type Pong struct {
 	MsgID  int64
@@ -486,12 +472,4 @@ type MsgsNewDetailedInfo struct {
 
 func (*MsgsNewDetailedInfo) CRC() uint32 {
 	return 0x809db6df //nolint:gomnd not magic
-}
-
-type LoggedWithQrCode struct {
-	LoggedAt int64
-}
-
-func (*LoggedWithQrCode) CRC() uint32 {
-	return 0x155bcf8 //nolint:gomnd not magic
 }

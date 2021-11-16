@@ -7,7 +7,6 @@ package telegram
 
 import (
 	"reflect"
-	//"strings"
 
 	errors "github.com/pkg/errors"
 )
@@ -1893,7 +1892,7 @@ func (*AuthExportLoginTokenParams) CRC() uint32 {
 }
 
 // Registers a validated phone number in the system.
-func (c *Client) AuthExportLoginToken(apiID int32, apiHash string, exceptIds []int32) (interface{}, error) {
+func (c *Client) AuthExportLoginToken(apiID int32, apiHash string, exceptIds []int32) (AuthLoginToken, error) {
 	responseData, err := c.MakeRequest(&AuthExportLoginTokenParams{
 		APIHash:   apiHash,
 		APIID:     apiID,
@@ -1903,7 +1902,11 @@ func (c *Client) AuthExportLoginToken(apiID int32, apiHash string, exceptIds []i
 		return nil, errors.Wrap(err, "sending AuthExportLoginToken")
 	}
 
-	return responseData, nil
+	resp, ok := responseData.(AuthLoginToken)
+	if !ok {
+		panic("got invalid response type: " + reflect.TypeOf(responseData).String())
+	}
+	return resp, nil
 }
 
 // Registers a validated phone number in the system.
@@ -1974,13 +1977,17 @@ func (*AuthImportLoginTokenParams) CRC() uint32 {
 }
 
 // Registers a validated phone number in the system.
-func (c *Client) AuthImportLoginToken(token []byte) (interface{}, error) {
+func (c *Client) AuthImportLoginToken(token []byte) (AuthLoginToken, error) {
 	responseData, err := c.MakeRequest(&AuthImportLoginTokenParams{Token: token})
 	if err != nil {
 		return nil, errors.Wrap(err, "sending AuthImportLoginToken")
 	}
 
-	return responseData, nil
+	resp, ok := responseData.(AuthLoginToken)
+	if !ok {
+		panic("got invalid response type: " + reflect.TypeOf(responseData).String())
+	}
+	return resp, nil
 }
 
 // Registers a validated phone number in the system.
